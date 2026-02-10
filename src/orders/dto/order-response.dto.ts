@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OrderSide, OrderStatus, OrderType } from '../../entities/order.entity';
 
 export class OrderResponseDto {
@@ -6,10 +6,10 @@ export class OrderResponseDto {
   id: number;
 
   @ApiProperty({ example: 1 })
-  instrumentId: number;
+  instrumentid: number;
 
   @ApiProperty({ example: 1 })
-  userId: number;
+  userid: number;
 
   @ApiProperty({ enum: OrderSide, example: OrderSide.BUY })
   side: OrderSide;
@@ -20,12 +20,16 @@ export class OrderResponseDto {
   @ApiProperty({ example: 150.5 })
   price: number;
 
-  @ApiProperty({ enum: OrderType, example: OrderType.MARKET })
-  type: OrderType;
+  @ApiPropertyOptional({ 
+    enum: OrderType, 
+    example: OrderType.MARKET,
+    description: 'Order type (null for CASH_IN/CASH_OUT transfers)'
+  })
+  type?: OrderType;
 
   @ApiProperty({ enum: OrderStatus, example: OrderStatus.NEW })
   status: OrderStatus;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2024-01-01T12:00:00Z' })
   datetime: Date;
 }

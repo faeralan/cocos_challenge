@@ -2,13 +2,13 @@
 
 Backend API for Cocos Challenge - A NestJS application with TypeORM, PostgreSQL, and Docker support, designed to be cloud-native and ECS/Fargate ready.
 
-## 📋 Prerequisites
+## Prerequisites
 
 - Node.js 20+
 - Docker & Docker Compose
 - PostgreSQL database (external or local)
 
-## 🛠️ Installation
+## Installation
 
 1. Clone and install dependencies:
 
@@ -63,16 +63,17 @@ Once running, visit **Swagger UI** at:
 http://localhost:3000/docs
 ```
 
-## 📡 API Endpoints
+## API Endpoints
 
 ### Portfolio
-- `GET /portfolio/:userId` - Get user portfolio (total value, positions, returns)
+- `GET /portfolio/:userid` - Get user portfolio (total value, positions, returns)
 
 ### Instruments
 - `GET /instruments?query=<search>` - Search instruments by ticker or name
 
 ### Orders
-- `POST /orders` - Submit a new order
+- `POST /orders` - Submit a new order (MARKET/LIMIT orders, CASH_IN/CASH_OUT transfers)
+- `PATCH /orders/:id/cancel` - Cancel an existing order (only NEW orders can be cancelled)
 
 ## Database Schema
 
@@ -80,8 +81,30 @@ The application connects to an existing PostgreSQL database with the following t
 
 - **users**: id, email, accountNumber
 - **instruments**: id, ticker, name, type
-- **orders**: id, instrumentId, userId, side, size, price, type, status, datetime
-- **marketdata**: id, instrumentId, high, low, open, close, previousClose, datetime
+- **orders**: id, instrumentId, userid, side, size, price, type, status, datetime
+- **marketdata**: id, instrumentId, high, low, open, close, previousclose, datetime
+
+### Dynamic Calculations
+
+No separate positions table - all balances calculated in real-time:
+
+- **Available cash**: SUM of FILLED orders (`CASH_IN` + `SELL` - `CASH_OUT` - `BUY`)
+- **Holdings**: SUM of FILLED orders per instrument (`BUY` - `SELL`)
+
+
+# Testing
+
+Run the test suite:
+
+# All tests
+npm test
+
+# Orders service tests (19 tests)
+npm test -- orders.service.spec.ts
+
+# Watch mode
+npm test -- --watch
+
 
 ## Docker
 

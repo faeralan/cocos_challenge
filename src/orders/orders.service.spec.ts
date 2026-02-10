@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { Order, OrderSide, OrderStatus, OrderType } from '../entities/order.entity';
@@ -12,9 +12,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 describe('OrdersService', () => {
   let service: OrdersService;
   let orderRepository: jest.Mocked<Partial<Repository<Order>>>;
-  let instrumentRepository: jest.Mocked<Partial<Repository<Instrument>>>;
-  let marketDataRepository: jest.Mocked<Partial<Repository<MarketData>>>;
-  let userRepository: jest.Mocked<Partial<Repository<User>>>;
+  let dataSource: jest.Mocked<Partial<DataSource>>;
 
   const mockUser: User = {
     id: 1,
@@ -32,40 +30,64 @@ describe('OrdersService', () => {
     marketData: [],
   };
 
+  const mockCashInstrument: Instrument = {
+    id: 2,
+    ticker: 'ARS',
+    name: 'Peso Argentino',
+    type: 'MONEDA',
+    orders: [],
+    marketData: [],
+  };
+
   const mockMarketData: MarketData = {
     id: 1,
-    instrumentId: 1,
+    instrumentid: 1,
     high: 155.0,
     low: 145.0,
     open: 150.0,
     close: 152.5,
-    previousClose: 149.0,
-    datetime: new Date(),
+    previousclose: 149.0,
+    date: new Date(),
     instrument: mockInstrument,
+  };
+
+  const createMockEntityManager = () => {
+    const mockQueryBuilder = {
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn(),
+    };
+
+    const mockManager = {
+      findOneBy: jest.fn(),
+      findOne: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
+    };
+
+    return { manager: mockManager, queryBuilder: mockQueryBuilder };
   };
 
   beforeEach(async () => {
     orderRepository = {
-      create: jest.fn(),
+      findOneBy: jest.fn(),
       save: jest.fn(),
     };
-    instrumentRepository = {
-      findOneBy: jest.fn(),
-    };
-    marketDataRepository = {
-      findOne: jest.fn(),
-    };
-    userRepository = {
-      findOneBy: jest.fn(),
+
+    dataSource = {
+      transaction: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
         { provide: getRepositoryToken(Order), useValue: orderRepository },
-        { provide: getRepositoryToken(Instrument), useValue: instrumentRepository },
-        { provide: getRepositoryToken(MarketData), useValue: marketDataRepository },
-        { provide: getRepositoryToken(User), useValue: userRepository },
+        { provide: getRepositoryToken(Instrument), useValue: {} },
+        { provide: getRepositoryToken(MarketData), useValue: {} },
+        { provide: getRepositoryToken(User), useValue: {} },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
 
@@ -76,11 +98,11 @@ describe('OrdersService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('createOrder', () => {
-    it('should create a MARKET order with latest market price', async () => {
+  describe('createOrder - BUY/SELL', () => {
+    it('should create a MARKET BUY order with FILLED status when funds are sufficient', async () => {
       const dto: CreateOrderDto = {
-        userId: 1,
-        instrumentId: 1,
+        userid: 1,
+        instrumentid: 1,
         side: OrderSide.BUY,
         size: 10,
         type: OrderType.MARKET,
@@ -88,30 +110,36 @@ describe('OrdersService', () => {
 
       const savedOrder = {
         id: 1,
-        ...dto,
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.BUY,
+        size: 10,
         price: 152.5,
-        status: OrderStatus.NEW,
+        type: OrderType.MARKET,
+        status: OrderStatus.FILLED,
         datetime: new Date(),
       } as Order;
 
-      userRepository.findOneBy.mockResolvedValue(mockUser);
-      instrumentRepository.findOneBy.mockResolvedValue(mockInstrument);
-      marketDataRepository.findOne.mockResolvedValue(mockMarketData);
-      orderRepository.create.mockReturnValue(savedOrder);
-      orderRepository.save.mockResolvedValue(savedOrder);
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
+      mockEM.manager.findOne.mockResolvedValue(mockMarketData);
+      mockEM.queryBuilder.getRawOne.mockResolvedValue({ availableCash: 10000 });
+      mockEM.manager.create.mockReturnValue(savedOrder);
+      mockEM.manager.save.mockResolvedValue(savedOrder);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
 
       const result = await service.createOrder(dto);
 
-      expect(result).toEqual(savedOrder);
+      expect(result.status).toBe(OrderStatus.FILLED);
       expect(result.price).toBe(152.5);
-      expect(result.status).toBe(OrderStatus.NEW);
-      expect(orderRepository.save).toHaveBeenCalled();
     });
 
-    it('should create a LIMIT order with provided price', async () => {
+    it('should create a LIMIT BUY order with NEW status', async () => {
       const dto: CreateOrderDto = {
-        userId: 1,
-        instrumentId: 1,
+        userid: 1,
+        instrumentid: 1,
         side: OrderSide.BUY,
         size: 5,
         type: OrderType.LIMIT,
@@ -120,32 +148,209 @@ describe('OrdersService', () => {
 
       const savedOrder = {
         id: 2,
-        ...dto,
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.BUY,
+        size: 5,
+        price: 140.0,
+        type: OrderType.LIMIT,
         status: OrderStatus.NEW,
         datetime: new Date(),
       } as Order;
 
-      userRepository.findOneBy.mockResolvedValue(mockUser);
-      instrumentRepository.findOneBy.mockResolvedValue(mockInstrument);
-      orderRepository.create.mockReturnValue(savedOrder);
-      orderRepository.save.mockResolvedValue(savedOrder);
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
+      mockEM.queryBuilder.getRawOne.mockResolvedValue({ availableCash: 10000 });
+      mockEM.manager.create.mockReturnValue(savedOrder);
+      mockEM.manager.save.mockResolvedValue(savedOrder);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
 
       const result = await service.createOrder(dto);
 
-      expect(result).toEqual(savedOrder);
+      expect(result.status).toBe(OrderStatus.NEW);
       expect(result.price).toBe(140.0);
+    });
+
+    it('should create MARKET SELL order with FILLED status when holdings are sufficient', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.SELL,
+        size: 5,
+        type: OrderType.MARKET,
+      };
+
+      const savedOrder = {
+        id: 3,
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.SELL,
+        size: 5,
+        price: 152.5,
+        type: OrderType.MARKET,
+        status: OrderStatus.FILLED,
+        datetime: new Date(),
+      } as Order;
+
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
+      mockEM.manager.findOne.mockResolvedValue(mockMarketData);
+      mockEM.queryBuilder.getRawOne.mockResolvedValue({ holding: 10 });
+      mockEM.manager.create.mockReturnValue(savedOrder);
+      mockEM.manager.save.mockResolvedValue(savedOrder);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      const result = await service.createOrder(dto);
+
+      expect(result.status).toBe(OrderStatus.FILLED);
+    });
+
+    it('should calculate size from amount for BUY order', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.BUY,
+        amount: 1500,
+        type: OrderType.MARKET,
+      };
+
+      const savedOrder = {
+        id: 4,
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.BUY,
+        size: 9, // Math.floor(1500 / 152.5) = 9
+        price: 152.5,
+        type: OrderType.MARKET,
+        status: OrderStatus.FILLED,
+        datetime: new Date(),
+      } as Order;
+
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
+      mockEM.manager.findOne.mockResolvedValue(mockMarketData);
+      mockEM.queryBuilder.getRawOne.mockResolvedValue({ availableCash: 10000 });
+      mockEM.manager.create.mockReturnValue(savedOrder);
+      mockEM.manager.save.mockResolvedValue(savedOrder);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      const result = await service.createOrder(dto);
+
+      expect(result.size).toBe(9);
+    });
+
+    it('should throw BadRequestException if amount is insufficient for 1 share', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.BUY,
+        amount: 10,
+        type: OrderType.MARKET,
+      };
+
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
+      mockEM.manager.findOne.mockResolvedValue(mockMarketData);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      await expect(service.createOrder(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should save BUY order as REJECTED when insufficient funds', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.BUY,
+        size: 100,
+        type: OrderType.MARKET,
+      };
+
+      const rejectedOrder = {
+        id: 5,
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.BUY,
+        size: 100,
+        price: 152.5,
+        type: OrderType.MARKET,
+        status: OrderStatus.REJECTED,
+        datetime: new Date(),
+      } as Order;
+
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
+      mockEM.manager.findOne.mockResolvedValue(mockMarketData);
+      mockEM.queryBuilder.getRawOne.mockResolvedValue({ availableCash: 100 });
+      mockEM.manager.create.mockReturnValue(rejectedOrder);
+      mockEM.manager.save.mockResolvedValue(rejectedOrder);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      const result = await service.createOrder(dto);
+
+      expect(result.status).toBe(OrderStatus.REJECTED);
+    });
+
+    it('should save SELL order as REJECTED when insufficient holdings', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.SELL,
+        size: 100,
+        type: OrderType.MARKET,
+      };
+
+      const rejectedOrder = {
+        id: 6,
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.SELL,
+        size: 100,
+        price: 152.5,
+        type: OrderType.MARKET,
+        status: OrderStatus.REJECTED,
+        datetime: new Date(),
+      } as Order;
+
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
+      mockEM.manager.findOne.mockResolvedValue(mockMarketData);
+      mockEM.queryBuilder.getRawOne.mockResolvedValue({ holding: 5 });
+      mockEM.manager.create.mockReturnValue(rejectedOrder);
+      mockEM.manager.save.mockResolvedValue(rejectedOrder);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      const result = await service.createOrder(dto);
+
+      expect(result.status).toBe(OrderStatus.REJECTED);
     });
 
     it('should throw NotFoundException if user does not exist', async () => {
       const dto: CreateOrderDto = {
-        userId: 999,
-        instrumentId: 1,
+        userid: 999,
+        instrumentid: 1,
         side: OrderSide.BUY,
         size: 10,
         type: OrderType.MARKET,
       };
 
-      userRepository.findOneBy.mockResolvedValue(null);
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValue(null);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
 
       await expect(service.createOrder(dto)).rejects.toThrow(
         NotFoundException,
@@ -154,15 +359,18 @@ describe('OrdersService', () => {
 
     it('should throw NotFoundException if instrument does not exist', async () => {
       const dto: CreateOrderDto = {
-        userId: 1,
-        instrumentId: 999,
+        userid: 1,
+        instrumentid: 999,
         side: OrderSide.BUY,
         size: 10,
         type: OrderType.MARKET,
       };
 
-      userRepository.findOneBy.mockResolvedValue(mockUser);
-      instrumentRepository.findOneBy.mockResolvedValue(null);
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(null);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
 
       await expect(service.createOrder(dto)).rejects.toThrow(
         NotFoundException,
@@ -171,16 +379,19 @@ describe('OrdersService', () => {
 
     it('should throw BadRequestException if MARKET order has no market data', async () => {
       const dto: CreateOrderDto = {
-        userId: 1,
-        instrumentId: 1,
+        userid: 1,
+        instrumentid: 1,
         side: OrderSide.BUY,
         size: 10,
         type: OrderType.MARKET,
       };
 
-      userRepository.findOneBy.mockResolvedValue(mockUser);
-      instrumentRepository.findOneBy.mockResolvedValue(mockInstrument);
-      marketDataRepository.findOne.mockResolvedValue(null);
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
+      mockEM.manager.findOne.mockResolvedValue(null);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
 
       await expect(service.createOrder(dto)).rejects.toThrow(
         BadRequestException,
@@ -189,19 +400,207 @@ describe('OrdersService', () => {
 
     it('should throw BadRequestException if LIMIT order has no price', async () => {
       const dto: CreateOrderDto = {
-        userId: 1,
-        instrumentId: 1,
+        userid: 1,
+        instrumentid: 1,
         side: OrderSide.SELL,
         size: 5,
         type: OrderType.LIMIT,
         price: undefined,
       };
 
-      userRepository.findOneBy.mockResolvedValue(mockUser);
-      instrumentRepository.findOneBy.mockResolvedValue(mockInstrument);
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
 
       await expect(service.createOrder(dto)).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    it('should throw BadRequestException if MARKET order has price provided', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.BUY,
+        size: 10,
+        type: OrderType.MARKET,
+        price: 150.5, // Should not be provided for MARKET
+      };
+
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      await expect(service.createOrder(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe('createOrder - CASH_IN/CASH_OUT', () => {
+    it('should create CASH_IN order with FILLED status', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        side: OrderSide.CASH_IN,
+        size: 5000,
+      };
+
+      const savedOrder = {
+        id: 7,
+        userid: 1,
+        instrumentid: 2,
+        side: OrderSide.CASH_IN,
+        size: 5000,
+        price: 1,
+        type: null,
+        status: OrderStatus.FILLED,
+        datetime: new Date(),
+      } as Order;
+
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockCashInstrument);
+      mockEM.manager.create.mockReturnValue(savedOrder);
+      mockEM.manager.save.mockResolvedValue(savedOrder);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      const result = await service.createOrder(dto);
+
+      expect(result.status).toBe(OrderStatus.FILLED);
+      expect(result.instrumentid).toBe(2);
+      expect(result.price).toBe(1);
+    });
+
+    it('should create CASH_OUT order with FILLED status when funds are sufficient', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        side: OrderSide.CASH_OUT,
+        amount: 2000,
+      };
+
+      const savedOrder = {
+        id: 8,
+        userid: 1,
+        instrumentid: 2,
+        side: OrderSide.CASH_OUT,
+        size: 2000,
+        price: 1,
+        type: null,
+        status: OrderStatus.FILLED,
+        datetime: new Date(),
+      } as Order;
+
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockCashInstrument);
+      mockEM.queryBuilder.getRawOne.mockResolvedValue({ availableCash: 5000 });
+      mockEM.manager.create.mockReturnValue(savedOrder);
+      mockEM.manager.save.mockResolvedValue(savedOrder);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      const result = await service.createOrder(dto);
+
+      expect(result.status).toBe(OrderStatus.FILLED);
+    });
+
+    it('should save CASH_OUT as REJECTED when insufficient funds', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        side: OrderSide.CASH_OUT,
+        size: 10000,
+      };
+
+      const rejectedOrder = {
+        id: 9,
+        userid: 1,
+        instrumentid: 2,
+        side: OrderSide.CASH_OUT,
+        size: 10000,
+        price: 1,
+        type: null,
+        status: OrderStatus.REJECTED,
+        datetime: new Date(),
+      } as Order;
+
+      const mockEM = createMockEntityManager();
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
+      mockEM.manager.findOneBy.mockResolvedValueOnce(mockCashInstrument);
+      mockEM.queryBuilder.getRawOne.mockResolvedValue({ availableCash: 100 });
+      mockEM.manager.create.mockReturnValue(rejectedOrder);
+      mockEM.manager.save.mockResolvedValue(rejectedOrder);
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      const result = await service.createOrder(dto);
+
+      expect(result.status).toBe(OrderStatus.REJECTED);
+    });
+  });
+
+  describe('cancelOrder', () => {
+    it('should cancel a NEW order', async () => {
+      const order = {
+        id: 1,
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.BUY,
+        size: 10,
+        price: 150,
+        type: OrderType.LIMIT,
+        status: OrderStatus.NEW,
+        datetime: new Date(),
+      } as Order;
+
+      const cancelledOrder = { ...order, status: OrderStatus.CANCELLED };
+
+      orderRepository.findOneBy.mockResolvedValue(order);
+      orderRepository.save.mockResolvedValue(cancelledOrder);
+
+      const result = await service.cancelOrder(1);
+
+      expect(result.status).toBe(OrderStatus.CANCELLED);
+      expect(orderRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: OrderStatus.CANCELLED }),
+      );
+    });
+
+    it('should throw BadRequestException when trying to cancel FILLED order', async () => {
+      const order = {
+        id: 1,
+        status: OrderStatus.FILLED,
+      } as Order;
+
+      orderRepository.findOneBy.mockResolvedValue(order);
+
+      await expect(service.cancelOrder(1)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should throw BadRequestException when trying to cancel REJECTED order', async () => {
+      const order = {
+        id: 1,
+        status: OrderStatus.REJECTED,
+      } as Order;
+
+      orderRepository.findOneBy.mockResolvedValue(order);
+
+      await expect(service.cancelOrder(1)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should throw NotFoundException when order does not exist', async () => {
+      orderRepository.findOneBy.mockResolvedValue(null);
+
+      await expect(service.cancelOrder(999)).rejects.toThrow(
+        NotFoundException,
       );
     });
   });

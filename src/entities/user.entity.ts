@@ -9,8 +9,8 @@ export class User {
   @Column()
   email: string;
 
-  @Column({ name: 'accountNumber' })
-  accountNumber: string;
+  @Column({ name: 'accountnumber' })
+  accountnumber: string;
 
   @OneToMany(() => Order, (order) => order.user)
   orders: Order[];

@@ -8,13 +8,13 @@ import { PortfolioResponseDto } from './dto/portfolio-response.dto';
 export class PortfolioController {
   constructor(private readonly portfolioService: PortfolioService) {}
 
-  @Get(':userId')
+  @Get(':userid')
   @ApiOperation({ summary: 'Get portfolio for a user' })
-  @ApiParam({ name: 'userId', type: Number, description: 'User ID' })
+  @ApiParam({ name: 'userid', type: Number, description: 'User ID' })
   @ApiResponse({ status: 200, type: PortfolioResponseDto })
   async getPortfolio(
-    @Param('userId', ParseIntPipe) userId: number,
+    @Param('userid', ParseIntPipe) userid: number,
   ): Promise<PortfolioResponseDto> {
-    return this.portfolioService.getPortfolio(userId);
+    return this.portfolioService.getPortfolio(userid);
   }
 }

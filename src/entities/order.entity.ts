@@ -33,11 +33,11 @@ export class Order {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'instrumentId' })
-  instrumentId: number;
+  @Column({ name: 'instrumentid' })
+  instrumentid: number;
 
-  @Column({ name: 'userId' })
-  userId: number;
+  @Column({ name: 'userid' })
+  userid: number;
 
   @Column({ type: 'varchar' })
   side: OrderSide;
@@ -48,8 +48,8 @@ export class Order {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   price: number;
 
-  @Column({ type: 'varchar' })
-  type: OrderType;
+  @Column({ type: 'varchar', nullable: true })
+  type: OrderType | null;
 
   @Column({ type: 'varchar' })
   status: OrderStatus;
@@ -58,10 +58,10 @@ export class Order {
   datetime: Date;
 
   @ManyToOne(() => User, (user) => user.orders)
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn({ name: 'userid' })
   user: User;
 
   @ManyToOne(() => Instrument, (instrument) => instrument.orders)
-  @JoinColumn({ name: 'instrumentId' })
+  @JoinColumn({ name: 'instrumentid' })
   instrument: Instrument;
 }

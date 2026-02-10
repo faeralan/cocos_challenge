@@ -12,8 +12,8 @@ export class MarketData {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'instrumentId' })
-  instrumentId: number;
+  @Column({ name: 'instrumentid' })
+  instrumentid: number;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   high: number;
@@ -27,13 +27,13 @@ export class MarketData {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   close: number;
 
-  @Column({ name: 'previousClose', type: 'decimal', precision: 10, scale: 2 })
-  previousClose: number;
+  @Column({ name: 'previousclose', type: 'decimal', precision: 10, scale: 2 })
+  previousclose: number;
 
   @Column({ type: 'timestamp' })
-  datetime: Date;
+  date: Date;
 
   @ManyToOne(() => Instrument, (instrument) => instrument.marketData)
-  @JoinColumn({ name: 'instrumentId' })
+  @JoinColumn({ name: 'instrumentid' })
   instrument: Instrument;
 }
