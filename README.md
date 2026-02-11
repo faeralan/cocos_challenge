@@ -34,45 +34,85 @@ DB_DATABASE=your-database
 DB_SSL=true  # Set to 'true' for cloud databases
 ```
 
-## 🏃 Running the Application
+## Running the Application
 
-### Development (local)
+### Option 1: Local Development
+
+Uses your local Node.js installation and connects to an external database:
 
 ```bash
 npm run start:dev
 ```
 
-### Production (Docker)
+
+
+**Requirements:**
+- Node.js 20+ installed locally
+- Database connection configured in `.env`
+
+### Option 2: Docker Compose
+
+Runs the app in a Docker container matching production deployment:
 
 ```bash
+# First time or after code changes
+docker compose up --build
+
+# Or force complete rebuild if you see stale code
+docker compose build --no-cache
 docker compose up
+
+# Run in background
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
 ```
 
-Or build and run manually:
+
+### Option 3: Manual Docker Build
+
+For testing the Docker image directly:
 
 ```bash
+# Build the image
 docker build -t cocos-api .
+
+# Run with environment variables
 docker run -p 3000:3000 --env-file .env cocos-api
+
+# Or pass variables directly
+docker run -p 3000:3000 \
+  -e DB_HOST=your-host \
+  -e DB_PORT=5432 \
+  -e DB_USERNAME=your-user \
+  -e DB_PASSWORD=your-pass \
+  -e DB_DATABASE=your-db \
+  -e DB_SSL=true \
+  cocos-api
 ```
 
-## API Documentation
+### Verify Application is Running
 
-Once running, visit **Swagger UI** at:
+Once started, visit:
 
-```
-http://localhost:3000/docs
-```
+- **API Health Check**: http://localhost:3000/health
+- **Swagger Documentation**: http://localhost:3000/docs
+
 
 ## API Endpoints
 
 ### Portfolio
-- `GET /portfolio/:userid` - Get user portfolio (total value, positions, returns)
+- `GET /portfolio/:userid` - Get user portfolio
 
 ### Instruments
 - `GET /instruments?query=<search>` - Search instruments by ticker or name
 
 ### Orders
-- `POST /orders` - Submit a new order (MARKET/LIMIT orders, CASH_IN/CASH_OUT transfers)
+- `POST /orders` - Submit a new order
 - `PATCH /orders/:id/cancel` - Cancel an existing order (only NEW orders can be cancelled)
 
 ### Order Examples
@@ -89,7 +129,7 @@ POST /orders
 }
 ```
 
-#### MARKET BUY (with amount - auto-calculates shares)
+#### MARKET BUY (with amount)
 ```json
 POST /orders
 {
@@ -114,7 +154,7 @@ POST /orders
 }
 ```
 
-#### CASH_IN (deposit)
+#### CASH_IN
 ```json
 POST /orders
 {
@@ -124,7 +164,7 @@ POST /orders
 }
 ```
 
-#### CASH_OUT (withdrawal)
+#### CASH_OUT
 ```json
 POST /orders
 {
@@ -162,7 +202,7 @@ No separate positions table - all balances calculated in real-time:
 - **Holdings**: SUM of FILLED orders per instrument (`BUY` - `SELL`)
 
 
-## 🧪 Testing
+## Testing
 
 Run the test suite:
 
@@ -178,33 +218,59 @@ npm test -- --watch
 ```
 
 Test coverage includes:
-- ✅ MARKET and LIMIT order creation with funds/holdings validation
-- ✅ Size calculation from amount
-- ✅ Order rejection scenarios (insufficient funds/holdings)
-- ✅ CASH_IN/CASH_OUT transfers with validation
-- ✅ Field validation (reject unnecessary fields per operation type)
-- ✅ Order cancellation (only NEW orders)
-- ✅ Price validation (MARKET must not have price, LIMIT must have price)
+- MARKET and LIMIT order creation with funds/holdings validation
+- Size calculation from amount
+- Order rejection scenarios (insufficient funds/holdings)
+- CASH_IN/CASH_OUT transfers with validation
+- Field validation (reject unnecessary fields per operation type)
+- Order cancellation (only NEW orders)
+- Price validation (MARKET must not have price, LIMIT must have price)
+
+## Architecture & Design Decisions
 
 
-## Docker
+### 1. Database-First Approach
 
-### Build
+The application connects to an **existing external PostgreSQL database** (no TypeORM migrations included):
 
-```bash
-docker build -t cocos-api .
+**Rationale:**
+- Database schema is provided/managed externally
+- `synchronize: false` in all environments (production-safe)
+- TypeORM entities map to existing tables for queries only
+
+### 2. Transactional Order Processing
+
+Order creation uses database transactions to ensure atomic validation and execution:
+
+```typescript
+await this.orderRepository.manager.transaction(async (manager) => {
+  // 1. Validate funds/holdings using manager
+  // 2. Create order
+  // 3. All or nothing - rollback on error
+});
 ```
 
-### Run
+### 3. Error Handling & Logging
 
-```bash
-docker run -p 3000:3000 --env-file .env cocos-api
-```
+- Global exception filter (`AllExceptionsFilter`) catches all errors
+- Returns structured JSON responses with HTTP status codes
+- Logs full stack traces for debugging (visible in Docker logs and CloudWatch)
+- Consistent error format across all endpoints
 
-### Docker Compose
+### Environment Variables for Production
 
-```bash
-docker compose up -d
-docker compose logs -f
-docker compose down
-```
+**Required:**
+- `DB_HOST` - Database hostname
+- `DB_PORT` - Database port (default: 5432)
+- `DB_USERNAME` - Database username
+- `DB_PASSWORD` - Database password
+- `DB_DATABASE` - Database name
+- `DB_SSL` - Enable SSL for database connection (`true` for cloud databases)
+
+**Optional:**
+- `PORT` - Application port (default: 3000)
+- `NODE_ENV` - Environment mode (default: development)
+- `LOG_LEVEL` - Logging level (default: log)
+- `SWAGGER_ENABLED` - Enable Swagger UI (default: true)
+
+

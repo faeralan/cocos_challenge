@@ -1,0 +1,139 @@
+{
+  "info": {
+    "_postman_id": "02d71edd-58a7-4768-9a65-62334bfe1030",
+    "name": "Cocos Challenge",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "11861316",
+    "_collection_link": "https://go.postman.co/collection/11861316-02d71edd-58a7-4768-9a65-62334bfe1030?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "GET Portfolio",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{HOST}}/portfolio/:id",
+          "host": [
+            "{{HOST}}"
+          ],
+          "path": [
+            "portfolio",
+            ":id"
+          ],
+          "variable": [
+            {
+              "key": "id",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "GET Instruments",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{HOST}}/instruments?query=",
+          "host": [
+            "{{HOST}}"
+          ],
+          "path": [
+            "instruments"
+          ],
+          "query": [
+            {
+              "key": "query",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "POST Orders",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userid\": 1,\n  \"instrumentid\": 33,\n  \"side\": \"BUY\",\n  \"type\": \"LIMIT\",\n  \"amount\": 50000,\n  \"price\": 412\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{HOST}}/orders",
+          "host": [
+            "{{HOST}}"
+          ],
+          "path": [
+            "orders"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "PATCH Cancel Order",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "url": {
+          "raw": "{{HOST}}/orders/:id/cancel",
+          "host": [
+            "{{HOST}}"
+          ],
+          "path": [
+            "orders",
+            ":id",
+            "cancel"
+          ],
+          "variable": [
+            {
+              "key": "id",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "HOST",
+      "value": ""
+    }
+  ]
+}
