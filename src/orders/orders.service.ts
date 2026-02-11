@@ -10,19 +10,15 @@ import { Instrument } from '../entities/instrument.entity';
 import { MarketData } from '../entities/market-data.entity';
 import { User } from '../entities/user.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { AccountService } from '../account/account.service';
 
 @Injectable()
 export class OrdersService {
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
-    @InjectRepository(Instrument)
-    private readonly instrumentRepository: Repository<Instrument>,
-    @InjectRepository(MarketData)
-    private readonly marketDataRepository: Repository<MarketData>,
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
     private readonly dataSource: DataSource,
+    private readonly accountService: AccountService,
   ) {}
 
   async createOrder(dto: CreateOrderDto): Promise<Order> {
@@ -69,7 +65,7 @@ export class OrdersService {
 
     // Validate funds/holdings
     if (dto.side === OrderSide.BUY) {
-      const availableCash = await this.getAvailableCash(dto.userid,manager);
+      const availableCash = await this.accountService.getAvailableCash(dto.userid, manager);
       if (totalOrderValue > availableCash) {
         // Insufficient funds - save as REJECTED
         const rejectedOrder = manager.create(Order, {
@@ -88,7 +84,7 @@ export class OrdersService {
 
     if (dto.side === OrderSide.SELL) {
       //check if the user has enough holdings
-      const holding = await this.getInstrumentHolding(dto.userid,dto.instrumentid,manager);
+      const holding = await this.accountService.getInstrumentHolding(dto.userid, dto.instrumentid, manager);
       if (size > holding) {
         // Insufficient holdings - save as REJECTED
         const rejectedOrder = manager.create(Order, {
@@ -135,7 +131,7 @@ export class OrdersService {
 
     // For CASH_OUT, validate sufficient funds
     if (dto.side === OrderSide.CASH_OUT) {
-      const availableCash = await this.getAvailableCash(dto.userid,manager);
+      const availableCash = await this.accountService.getAvailableCash(dto.userid, manager);
       if (size > availableCash) {
         // Insufficient funds - save as REJECTED
         const rejectedOrder = manager.create(Order, {
@@ -269,64 +265,6 @@ export class OrdersService {
     throw new BadRequestException('Either size or amount must be provided');
   }
 
-  /**
-   * Calculate available cash for a user by summing all FILLED orders
-   * availableCash =
-      (CASH_IN)
-    - (CASH_OUT)
-    - (BUY size × price)
-    + (SELL size × price)
-   */
-  private async getAvailableCash(
-    userid: number,
-    manager: EntityManager,
-  ): Promise<number> {
-    const result = await manager
-      .createQueryBuilder(Order, 'o')
-      .select(
-        `COALESCE(SUM(
-          CASE
-            WHEN o.side IN ('CASH_IN', 'SELL') THEN o.size * COALESCE(o.price, 1)
-            WHEN o.side IN ('CASH_OUT', 'BUY') THEN -o.size * COALESCE(o.price, 1)
-            ELSE 0
-          END
-        ), 0)`,
-        'availableCash',
-      )
-      .where('o.userid = :userid', { userid })
-      .andWhere('o.status = :status', { status: OrderStatus.FILLED })
-      .getRawOne();
-
-    return Number(result.availableCash);
-  }
-
-  /**
-   * Calculate instrument holdings for a user by summing BUY/SELL orders
-   */
-  private async getInstrumentHolding(
-    userid: number,
-    instrumentid: number,
-    manager: EntityManager,
-  ): Promise<number> {
-    const result = await manager
-      .createQueryBuilder(Order, 'o')
-      .select(
-        `COALESCE(SUM(
-          CASE
-            WHEN o.side = 'BUY' THEN o.size
-            WHEN o.side = 'SELL' THEN -o.size
-            ELSE 0
-          END
-        ), 0)`,
-        'holding',
-      )
-      .where('o.userid = :userid', { userid })
-      .andWhere('o.instrumentid = :instrumentid', { instrumentid })
-      .andWhere('o.status = :status', { status: OrderStatus.FILLED })
-      .getRawOne();
-
-    return Number(result.holding);
-  }
 
   /**
    * Get the latest close price for an instrument from market data

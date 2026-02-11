@@ -8,11 +8,13 @@ import { Instrument } from '../entities/instrument.entity';
 import { MarketData } from '../entities/market-data.entity';
 import { User } from '../entities/user.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { AccountService } from '../account/account.service';
 
 describe('OrdersService', () => {
   let service: OrdersService;
   let orderRepository: jest.Mocked<Partial<Repository<Order>>>;
   let dataSource: jest.Mocked<Partial<DataSource>>;
+  let accountService: jest.Mocked<Partial<AccountService>>;
 
   const mockUser: User = {
     id: 1,
@@ -80,6 +82,11 @@ describe('OrdersService', () => {
       transaction: jest.fn(),
     };
 
+    accountService = {
+      getAvailableCash: jest.fn(),
+      getInstrumentHolding: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
@@ -88,6 +95,7 @@ describe('OrdersService', () => {
         { provide: getRepositoryToken(MarketData), useValue: {} },
         { provide: getRepositoryToken(User), useValue: {} },
         { provide: DataSource, useValue: dataSource },
+        { provide: AccountService, useValue: accountService },
       ],
     }).compile();
 
@@ -124,7 +132,7 @@ describe('OrdersService', () => {
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
       mockEM.manager.findOne.mockResolvedValue(mockMarketData);
-      mockEM.queryBuilder.getRawOne.mockResolvedValue({ availableCash: 10000 });
+      accountService.getAvailableCash.mockResolvedValue(10000);
       mockEM.manager.create.mockReturnValue(savedOrder);
       mockEM.manager.save.mockResolvedValue(savedOrder);
 
@@ -161,7 +169,7 @@ describe('OrdersService', () => {
       const mockEM = createMockEntityManager();
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
-      mockEM.queryBuilder.getRawOne.mockResolvedValue({ availableCash: 10000 });
+      accountService.getAvailableCash.mockResolvedValue(10000);
       mockEM.manager.create.mockReturnValue(savedOrder);
       mockEM.manager.save.mockResolvedValue(savedOrder);
 
@@ -198,7 +206,7 @@ describe('OrdersService', () => {
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
       mockEM.manager.findOne.mockResolvedValue(mockMarketData);
-      mockEM.queryBuilder.getRawOne.mockResolvedValue({ holding: 10 });
+      accountService.getInstrumentHolding.mockResolvedValue(10);
       mockEM.manager.create.mockReturnValue(savedOrder);
       mockEM.manager.save.mockResolvedValue(savedOrder);
 
@@ -234,7 +242,7 @@ describe('OrdersService', () => {
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
       mockEM.manager.findOne.mockResolvedValue(mockMarketData);
-      mockEM.queryBuilder.getRawOne.mockResolvedValue({ availableCash: 10000 });
+      accountService.getAvailableCash.mockResolvedValue(10000);
       mockEM.manager.create.mockReturnValue(savedOrder);
       mockEM.manager.save.mockResolvedValue(savedOrder);
 
@@ -291,7 +299,7 @@ describe('OrdersService', () => {
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
       mockEM.manager.findOne.mockResolvedValue(mockMarketData);
-      mockEM.queryBuilder.getRawOne.mockResolvedValue({ availableCash: 100 });
+      accountService.getAvailableCash.mockResolvedValue(100);
       mockEM.manager.create.mockReturnValue(rejectedOrder);
       mockEM.manager.save.mockResolvedValue(rejectedOrder);
 
@@ -327,7 +335,7 @@ describe('OrdersService', () => {
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
       mockEM.manager.findOne.mockResolvedValue(mockMarketData);
-      mockEM.queryBuilder.getRawOne.mockResolvedValue({ holding: 5 });
+      accountService.getInstrumentHolding.mockResolvedValue(5);
       mockEM.manager.create.mockReturnValue(rejectedOrder);
       mockEM.manager.save.mockResolvedValue(rejectedOrder);
 
@@ -539,7 +547,7 @@ describe('OrdersService', () => {
       const mockEM = createMockEntityManager();
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockCashInstrument);
-      mockEM.queryBuilder.getRawOne.mockResolvedValue({ availableCash: 5000 });
+      accountService.getAvailableCash.mockResolvedValue(5000);
       mockEM.manager.create.mockReturnValue(savedOrder);
       mockEM.manager.save.mockResolvedValue(savedOrder);
 
@@ -572,7 +580,7 @@ describe('OrdersService', () => {
       const mockEM = createMockEntityManager();
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockCashInstrument);
-      mockEM.queryBuilder.getRawOne.mockResolvedValue({ availableCash: 100 });
+      accountService.getAvailableCash.mockResolvedValue(100);
       mockEM.manager.create.mockReturnValue(rejectedOrder);
       mockEM.manager.save.mockResolvedValue(rejectedOrder);
 
