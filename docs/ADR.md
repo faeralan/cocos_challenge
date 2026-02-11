@@ -205,7 +205,6 @@ WHERE status = 'FILLED' AND side IN ('BUY', 'SELL');
 ```
 
 **Impact:** 50-80% reduction in query execution time for balance and portfolio calculations.  
-**Effort:** 15 minutes
 
 #### 2. Redis Caching Layer
 

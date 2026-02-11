@@ -154,6 +154,29 @@ POST /orders
 }
 ```
 
+#### LIMIT BUY
+```json
+POST /orders
+{
+  "userid": 1,
+  "instrumentid": 1,
+  "side": "BUY",
+  "type": "LIMIT",
+  "size": 5,
+  "price": 160.50
+}
+
+POST /orders
+{
+  "userid": 1,
+  "instrumentid": 1,
+  "side": "BUY",
+  "type": "LIMIT",
+  "amount": 500,
+  "price": 160.50
+}
+```
+
 #### CASH_IN
 ```json
 POST /orders
