@@ -75,6 +75,76 @@ http://localhost:3000/docs
 - `POST /orders` - Submit a new order (MARKET/LIMIT orders, CASH_IN/CASH_OUT transfers)
 - `PATCH /orders/:id/cancel` - Cancel an existing order (only NEW orders can be cancelled)
 
+### Order Examples
+
+#### MARKET BUY (with size)
+```json
+POST /orders
+{
+  "userid": 1,
+  "instrumentid": 1,
+  "side": "BUY",
+  "type": "MARKET",
+  "size": 10
+}
+```
+
+#### MARKET BUY (with amount - auto-calculates shares)
+```json
+POST /orders
+{
+  "userid": 1,
+  "instrumentid": 1,
+  "side": "BUY",
+  "type": "MARKET",
+  "amount": 5000.00
+}
+```
+
+#### LIMIT SELL
+```json
+POST /orders
+{
+  "userid": 1,
+  "instrumentid": 1,
+  "side": "SELL",
+  "type": "LIMIT",
+  "size": 5,
+  "price": 160.50
+}
+```
+
+#### CASH_IN (deposit)
+```json
+POST /orders
+{
+  "userid": 1,
+  "side": "CASH_IN",
+  "amount": 100000
+}
+```
+
+#### CASH_OUT (withdrawal)
+```json
+POST /orders
+{
+  "userid": 1,
+  "side": "CASH_OUT",
+  "amount": 50000
+}
+```
+
+#### Cancel Order
+```bash
+PATCH /orders/123/cancel
+```
+
+**Order States:**
+- `MARKET` orders → Executed immediately → Status: `FILLED` (or `REJECTED` if insufficient funds/holdings)
+- `LIMIT` orders → Queued → Status: `NEW` (or `REJECTED` if insufficient funds/holdings)
+- `CASH_IN` transfers → Status: `FILLED`
+- `CASH_OUT` transfers → Status: `FILLED` (or `REJECTED` if insufficient funds)
+
 ## Database Schema
 
 The application connects to an existing PostgreSQL database with the following tables:
@@ -92,18 +162,29 @@ No separate positions table - all balances calculated in real-time:
 - **Holdings**: SUM of FILLED orders per instrument (`BUY` - `SELL`)
 
 
-# Testing
+## 🧪 Testing
 
 Run the test suite:
 
+```bash
 # All tests
 npm test
 
-# Orders service tests (19 tests)
+# Orders service tests (25 tests)
 npm test -- orders.service.spec.ts
 
 # Watch mode
 npm test -- --watch
+```
+
+Test coverage includes:
+- ✅ MARKET and LIMIT order creation with funds/holdings validation
+- ✅ Size calculation from amount
+- ✅ Order rejection scenarios (insufficient funds/holdings)
+- ✅ CASH_IN/CASH_OUT transfers with validation
+- ✅ Field validation (reject unnecessary fields per operation type)
+- ✅ Order cancellation (only NEW orders)
+- ✅ Price validation (MARKET must not have price, LIMIT must have price)
 
 
 ## Docker

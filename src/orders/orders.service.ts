@@ -27,7 +27,10 @@ export class OrdersService {
 
   async createOrder(dto: CreateOrderDto): Promise<Order> {
     return this.dataSource.transaction(async (manager) => {
-      // Validate user exists
+      // 1. Validate business rules for input
+      this.validateOrderInput(dto);
+
+      // 2. Validate user exists
       const user = await manager.findOneBy(User, {
         id: dto.userid,
       });
@@ -35,12 +38,10 @@ export class OrdersService {
         throw new NotFoundException(`User with id ${dto.userid} not found`);
       }
 
-      // Route based on order side
-      if (dto.side === OrderSide.CASH_IN || dto.side === OrderSide.CASH_OUT) {
-        return this.processCashTransfer(dto, manager);
-      } else {
-        return this.processMarketOrder(dto, manager);
-      }
+      // 3. Route based on order side
+      const isCashTransfer = dto.side === OrderSide.CASH_IN || dto.side === OrderSide.CASH_OUT;
+
+      return isCashTransfer ? this.processCashTransfer(dto, manager) : this.processMarketOrder(dto, manager);
     });
   }
 
@@ -68,10 +69,7 @@ export class OrdersService {
 
     // Validate funds/holdings
     if (dto.side === OrderSide.BUY) {
-      const availableCash = await this.getAvailableCash(
-        dto.userid,
-        manager,
-      );
+      const availableCash = await this.getAvailableCash(dto.userid,manager);
       if (totalOrderValue > availableCash) {
         // Insufficient funds - save as REJECTED
         const rejectedOrder = manager.create(Order, {
@@ -90,11 +88,7 @@ export class OrdersService {
 
     if (dto.side === OrderSide.SELL) {
       //check if the user has enough holdings
-      const holding = await this.getInstrumentHolding(
-        dto.userid,
-        dto.instrumentid,
-        manager,
-      );
+      const holding = await this.getInstrumentHolding(dto.userid,dto.instrumentid,manager);
       if (size > holding) {
         // Insufficient holdings - save as REJECTED
         const rejectedOrder = manager.create(Order, {
@@ -112,8 +106,7 @@ export class OrdersService {
     }
 
     // Determine status
-    const status =
-      dto.type === OrderType.MARKET ? OrderStatus.FILLED : OrderStatus.NEW;
+    const status = dto.type === OrderType.MARKET ? OrderStatus.FILLED : OrderStatus.NEW;
 
     // Create and save the order
     const order = manager.create(Order, {
@@ -142,10 +135,7 @@ export class OrdersService {
 
     // For CASH_OUT, validate sufficient funds
     if (dto.side === OrderSide.CASH_OUT) {
-      const availableCash = await this.getAvailableCash(
-        dto.userid,
-        manager,
-      );
+      const availableCash = await this.getAvailableCash(dto.userid,manager);
       if (size > availableCash) {
         // Insufficient funds - save as REJECTED
         const rejectedOrder = manager.create(Order, {
@@ -156,7 +146,7 @@ export class OrdersService {
           price: 1,
           type: OrderType.MARKET,
           status: OrderStatus.REJECTED,
-          date: new Date(),
+          datetime: new Date(),
         });
         return manager.save(rejectedOrder);
       }
@@ -171,7 +161,7 @@ export class OrdersService {
       price: 1,
       type: OrderType.MARKET,
       status: OrderStatus.FILLED,
-      date: new Date(),
+      datetime: new Date(),
     });
 
     return manager.save(order);
@@ -192,19 +182,60 @@ export class OrdersService {
   }
 
   /**
-   * Validate order type and related constraints
+   * Main validation method - validates business rules for order input
    */
-  private validateOrderType(dto: CreateOrderDto): void {
+  private validateOrderInput(dto: CreateOrderDto): void {
+    this.validateSizeOrAmount(dto);
+
+    const isCashTransfer = dto.side === OrderSide.CASH_IN || dto.side === OrderSide.CASH_OUT;
+
+    isCashTransfer ? this.validateCashTransferInput(dto) : this.validateMarketOrderInput(dto);
+  }
+
+  /**
+   * Validate that exactly one of size or amount is provided
+   */
+  private validateSizeOrAmount(dto: CreateOrderDto): void {
+    const hasSize = dto.size !== undefined;
+    const hasAmount = dto.amount !== undefined;
+
+    if (hasSize === hasAmount) {
+      throw new BadRequestException('Exactly one of size or amount must be provided');
+    }
+  }
+
+  /**
+   * Validate cash transfer input (CASH_IN/CASH_OUT)
+   * Only userid, side, and size/amount should be provided
+   */
+  private validateCashTransferInput(dto: CreateOrderDto): void {
+    if (dto.instrumentid !== undefined) {
+      throw new BadRequestException('instrumentid must not be provided for cash transfers');
+    }
+    if (dto.type !== undefined) {
+      throw new BadRequestException('type must not be provided for cash transfers');
+    }
+    if (dto.price !== undefined) {
+      throw new BadRequestException('price must not be provided for cash transfers');
+    }
+  }
+
+  /**
+   * Validate market order input (BUY/SELL)
+   * Requires instrumentid and type, validates price based on type
+   */
+  private validateMarketOrderInput(dto: CreateOrderDto): void {
+    if (!dto.instrumentid) {
+      throw new BadRequestException('instrumentid is required for BUY/SELL orders');
+    }
     if (!dto.type) {
-      throw new BadRequestException('Type is required for BUY/SELL orders');
+      throw new BadRequestException('type is required for BUY/SELL orders');
     }
-
     if (dto.type === OrderType.MARKET && dto.price !== undefined) {
-      throw new BadRequestException('Price must not be provided for MARKET orders');
+      throw new BadRequestException('price must not be provided for MARKET orders');
     }
-
-    if (dto.type === OrderType.LIMIT && !dto.price) {
-      throw new BadRequestException('Price is required for LIMIT orders');
+    if (dto.type === OrderType.LIMIT && dto.price === undefined) {
+      throw new BadRequestException('price is required for LIMIT orders');
     }
   }
 
@@ -215,11 +246,7 @@ export class OrdersService {
     dto: CreateOrderDto,
     manager: EntityManager,
   ): Promise<number> {
-    this.validateOrderType(dto);
-
-    return dto.type === OrderType.LIMIT
-      ? dto.price!
-      : await this.getLatestPrice(dto.instrumentid!, manager);
+    return dto.type === OrderType.LIMIT ? dto.price! : await this.getLatestPrice(dto.instrumentid!, manager);
   }
 
   /**
@@ -234,16 +261,12 @@ export class OrdersService {
     if (dto.amount) {
       const calculatedSize = Math.floor(dto.amount / price);
       if (calculatedSize <= 0) {
-        throw new BadRequestException(
-          'Amount is not enough to buy at least 1 share',
-        );
+        throw new BadRequestException('Amount is not enough to buy at least 1 share');
       }
       return calculatedSize;
     }
 
-    throw new BadRequestException(
-      'Either size or amount must be provided',
-    );
+    throw new BadRequestException('Either size or amount must be provided');
   }
 
   /**
@@ -318,9 +341,7 @@ export class OrdersService {
     });
 
     if (!latestMarketData) {
-      throw new BadRequestException(
-        `No market data available for instrument ${instrumentid}`,
-      );
+      throw new BadRequestException(`No market data available for instrument ${instrumentid}`);
     }
 
     return Number(latestMarketData.close);
@@ -337,9 +358,7 @@ export class OrdersService {
     });
 
     if (!cashInstrument) {
-      throw new BadRequestException(
-        'Cash instrument (MONEDA) not found in database',
-      );
+      throw new BadRequestException('Cash instrument (MONEDA) not found in database');
     }
 
     return cashInstrument;

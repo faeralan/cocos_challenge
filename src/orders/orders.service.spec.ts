@@ -17,7 +17,7 @@ describe('OrdersService', () => {
   const mockUser: User = {
     id: 1,
     email: 'test@test.com',
-    accountNumber: '10001',
+    accountnumber: '10001',
     orders: [],
   };
 
@@ -431,12 +431,53 @@ describe('OrdersService', () => {
 
       const mockEM = createMockEntityManager();
       mockEM.manager.findOneBy.mockResolvedValueOnce(mockUser);
-      mockEM.manager.findOneBy.mockResolvedValueOnce(mockInstrument);
 
       dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
 
       await expect(service.createOrder(dto)).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    it('should throw BadRequestException if neither size nor amount is provided', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.BUY,
+        type: OrderType.MARKET,
+      };
+
+      const mockEM = createMockEntityManager();
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      await expect(service.createOrder(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.createOrder(dto)).rejects.toThrow(
+        'Exactly one of size or amount must be provided',
+      );
+    });
+
+    it('should throw BadRequestException if both size and amount are provided', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        instrumentid: 1,
+        side: OrderSide.BUY,
+        size: 10,
+        amount: 1500,
+        type: OrderType.MARKET,
+      };
+
+      const mockEM = createMockEntityManager();
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      await expect(service.createOrder(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.createOrder(dto)).rejects.toThrow(
+        'Exactly one of size or amount must be provided',
       );
     });
   });
@@ -540,6 +581,66 @@ describe('OrdersService', () => {
       const result = await service.createOrder(dto);
 
       expect(result.status).toBe(OrderStatus.REJECTED);
+    });
+
+    it('should throw BadRequestException if CASH_IN has instrumentid provided', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        side: OrderSide.CASH_IN,
+        size: 5000,
+        instrumentid: 1, // Should not be provided
+      };
+
+      const mockEM = createMockEntityManager();
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      await expect(service.createOrder(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.createOrder(dto)).rejects.toThrow(
+        'instrumentid must not be provided for cash transfers',
+      );
+    });
+
+    it('should throw BadRequestException if CASH_IN has type provided', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        side: OrderSide.CASH_IN,
+        size: 5000,
+        type: OrderType.MARKET, // Should not be provided
+      };
+
+      const mockEM = createMockEntityManager();
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      await expect(service.createOrder(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.createOrder(dto)).rejects.toThrow(
+        'type must not be provided for cash transfers',
+      );
+    });
+
+    it('should throw BadRequestException if CASH_OUT has price provided', async () => {
+      const dto: CreateOrderDto = {
+        userid: 1,
+        side: OrderSide.CASH_OUT,
+        amount: 1000,
+        price: 150.5, // Should not be provided
+      };
+
+      const mockEM = createMockEntityManager();
+
+      dataSource.transaction.mockImplementation(async (cb) => cb(mockEM.manager));
+
+      await expect(service.createOrder(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.createOrder(dto)).rejects.toThrow(
+        'price must not be provided for cash transfers',
+      );
     });
   });
 
