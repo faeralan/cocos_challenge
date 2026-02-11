@@ -228,29 +228,11 @@ Test coverage includes:
 
 ## Architecture & Design Decisions
 
+> For detailed Architecture Decision Records (ADRs) covering deployment strategy, scaling, transaction management, and more, see [docs/ADR.md](./docs/ADR.md).
 
-### 1. Database-First Approach
 
-The application connects to an **existing external PostgreSQL database** (no TypeORM migrations included):
 
-**Rationale:**
-- Database schema is provided/managed externally
-- `synchronize: false` in all environments (production-safe)
-- TypeORM entities map to existing tables for queries only
-
-### 2. Transactional Order Processing
-
-Order creation uses database transactions to ensure atomic validation and execution:
-
-```typescript
-await this.orderRepository.manager.transaction(async (manager) => {
-  // 1. Validate funds/holdings using manager
-  // 2. Create order
-  // 3. All or nothing - rollback on error
-});
-```
-
-### 3. Error Handling & Logging
+### 1. Error Handling & Logging
 
 - Global exception filter (`AllExceptionsFilter`) catches all errors
 - Returns structured JSON responses with HTTP status codes
